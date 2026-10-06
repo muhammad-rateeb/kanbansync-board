@@ -125,13 +125,18 @@ export function KanbanWorkspace() {
   const [inviteAccountId, setInviteAccountId] = useState('')
   const [memberBusy, setMemberBusy] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [mobileBoardsOpen, setMobileBoardsOpen] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
   const channelRef = useRef<Channel | null>(null)
   const board = boards.find((item) => item.id === selectedBoardId) ?? null
   const boardId = board?.id ?? null
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setToday(localDateStamp()), 0)
+    const timer = window.setTimeout(() => {
+      setToday(localDateStamp())
+      setDarkMode(document.documentElement.classList.contains('dark'))
+    }, 0)
     const interval = window.setInterval(() => setToday(localDateStamp()), 60_000)
     return () => { window.clearTimeout(timer); window.clearInterval(interval) }
   }, [])
@@ -158,9 +163,8 @@ export function KanbanWorkspace() {
   const reloadBoards = useCallback(async () => {
     if (!user?.id) return [] as BoardsRow[]
     try {
-      const memberships = await membersTable.list({ where: { userId: user.id }, orderBy: { createdAt: 'desc' } })
-      const rows = await Promise.all(memberships.map((membership) => boardsTable.get(membership.boardId)))
-      const available = rows.filter((item): item is BoardsRow => Boolean(item))
+      // Membership RLS on boards returns only boards this user owns or belongs to.
+      const available = await boardsTable.list({ orderBy: { updatedAt: 'desc' } })
       setBoards(available)
       setSelectedBoardId((current) => available.some((item) => item.id === current) ? current : available[0]?.id ?? null)
       return available
