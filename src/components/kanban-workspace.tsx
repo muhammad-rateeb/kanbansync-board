@@ -303,7 +303,10 @@ export function KanbanWorkspace() {
       setSelectedBoardId(remaining[0]?.id ?? null)
       setMenuOpen(false)
       toast.success('Board deleted')
-    } catch (error) { toast.error('The board could not be deleted', { description: errorText(error) }) }
+    } catch (error) {
+      await Promise.allSettled([reloadBoards(), loadBoardData(board.id)])
+      toast.error('The board could not be deleted completely', { description: errorText(error) })
+    }
   }
 
   const addList = async (event: FormEvent<HTMLFormElement>) => {
@@ -335,7 +338,11 @@ export function KanbanWorkspace() {
     setCards((current) => current.filter((card) => card.listId !== list.id))
     setLists((current) => current.filter((item) => item.id !== list.id))
     try { await cardsTable.deleteMany({ where: { listId: list.id } }); await listsTable.delete(list.id); await broadcast('list-deleted', list.id); toast.success('List deleted') }
-    catch (error) { setLists((current) => [...current, list].sort((a, b) => Number(a.position) - Number(b.position))); setCards(previousCards); toast.error('The list could not be deleted', { description: errorText(error) }) }
+    catch (error) {
+      try { if (board) await loadBoardData(board.id) }
+      catch { setLists((current) => [...current, list].sort((a, b) => Number(a.position) - Number(b.position))); setCards(previousCards) }
+      toast.error('The list could not be deleted completely', { description: errorText(error) })
+    }
   }
 
   const createCard = async (listId: string, rawTitle: string) => {
@@ -388,6 +395,8 @@ export function KanbanWorkspace() {
     setMemberBusy(true)
     const member: BoardMembersRow = { id: makeId(), userId: parsed.data, boardId: board.id, role: 'member', createdAt: new Date().toISOString() }
     try {
+      const existing = await membersTable.list({ where: { boardId: board.id, userId: parsed.data }, limit: 1 })
+      if (existing.length) return toast.error('This account already has access to the board.')
       await membersTable.create(member)
       setMembers((current) => [...current, member])
       setInviteAccountId('')
@@ -410,7 +419,9 @@ export function KanbanWorkspace() {
   }
 
   const copyAccountId = async () => {
-    try { await navigator.clipboard.writeText(user.id); toast.success('Your account ID was copied') }
+    if (!user) return
+    const accountId = user.id
+    try { await navigator.clipboard.writeText(accountId); toast.success('Your account ID was copied') }
     catch (error) { toast.error('Could not copy your account ID', { description: errorText(error) }) }
   }
 
